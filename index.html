@@ -1,0 +1,912 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Hot Wheels Card Scanner</title>
+
+  <!-- Librerías de Teachable Machine -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
+
+  <style>
+    :root {
+      --rojo: #e52521;
+      --negro: #151515;
+      --gris: #242424;
+      --blanco: #ffffff;
+      --gris-claro: #bdbdbd;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--negro);
+      color: var(--blanco);
+      font-family: Arial, Helvetica, sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      text-align: center;
+      padding: 28px 16px;
+      border-bottom: 3px solid var(--rojo);
+      background: #101010;
+    }
+
+    header h1 {
+      font-size: clamp(26px, 5vw, 42px);
+      text-transform: uppercase;
+      font-weight: 900;
+      font-style: italic;
+    }
+
+    header h1 span {
+      color: var(--rojo);
+    }
+
+    header p {
+      color: var(--gris-claro);
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    main {
+      width: min(1100px, 100%);
+      margin: auto;
+      padding: 24px 16px 50px;
+    }
+
+    .panel {
+      background: var(--gris);
+      padding: 20px;
+      border-radius: 16px;
+      margin-bottom: 22px;
+      border: 1px solid #393939;
+    }
+
+    h2 {
+      font-size: 21px;
+      margin-bottom: 14px;
+    }
+
+    .descripcion {
+      color: var(--gris-claro);
+      line-height: 1.5;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+
+    .botones {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    button,
+    .boton-descarga {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      background: var(--rojo);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 13px 17px;
+      font-size: 14px;
+      font-weight: bold;
+      text-decoration: none;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover,
+    .boton-descarga:hover {
+      background: #ff3933;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .boton-secundario {
+      background: #393939;
+    }
+
+    .boton-secundario:hover {
+      background: #505050;
+    }
+
+    #estado-modelo {
+      font-size: 13px;
+      color: #dddddd;
+      line-height: 1.5;
+    }
+
+    #estado-modelo.error {
+      color: #ff7777;
+    }
+
+    #estado-modelo.exito {
+      color: #82e5a0;
+    }
+
+    .zona-camara {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 220px;
+      overflow: hidden;
+      background: #101010;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    #webcam-container canvas,
+    #webcam-container video {
+      width: 100%;
+      max-width: 480px;
+      height: auto;
+      border-radius: 8px;
+      display: block;
+    }
+
+    #imagen-container {
+      text-align: center;
+    }
+
+    #imagen-preview {
+      display: none;
+      max-width: 100%;
+      max-height: 380px;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .resultados {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .resultado {
+      background: #171717;
+      border: 1px solid #3d3d3d;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .resultado-nombre {
+      font-size: 13px;
+      color: #eeeeee;
+      margin-bottom: 10px;
+      overflow-wrap: anywhere;
+    }
+
+    .barra-fondo {
+      width: 100%;
+      height: 8px;
+      border-radius: 10px;
+      background: #3a3a3a;
+      overflow: hidden;
+    }
+
+    .barra {
+      width: 0%;
+      height: 100%;
+      background: var(--rojo);
+      transition: width 0.2s;
+    }
+
+    .porcentaje {
+      display: block;
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .zona-carta {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .carta-marco {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 150px;
+    }
+
+    #carta {
+      display: none;
+      width: 100%;
+      max-width: 340px;
+      height: auto;
+      border-radius: 12px;
+      object-fit: contain;
+      box-shadow: 0 8px 28px #0008;
+    }
+
+    #carta-no-disponible {
+      color: var(--gris-claro);
+      font-size: 14px;
+      line-height: 1.6;
+      text-align: center;
+      padding: 28px 12px;
+    }
+
+    #estado-carta {
+      font-size: 14px;
+      line-height: 1.6;
+      margin: 16px 0;
+      color: var(--gris-claro);
+      overflow-wrap: anywhere;
+    }
+
+    #estado-carta.exito {
+      color: #82e5a0;
+    }
+
+    #estado-carta.error {
+      color: #ff7777;
+    }
+
+    #descargar-carta {
+      display: none;
+      width: 100%;
+      text-align: center;
+    }
+
+    .nota {
+      color: var(--gris-claro);
+      font-size: 12px;
+      line-height: 1.6;
+      margin-top: 14px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    footer {
+      padding: 20px 16px;
+      text-align: center;
+      color: #888;
+      font-size: 12px;
+      border-top: 1px solid #333;
+    }
+
+    @media (min-width: 760px) {
+      main {
+        padding-top: 32px;
+      }
+
+      .zona-carta {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+
+      .panel {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>HOT <span>WHEELS</span> SCANNER</h1>
+    <p>Identifica tu carro y descubre su carta coleccionable.</p>
+  </header>
+
+  <main>
+
+    <!-- ESTADO DEL MODELO -->
+    <section class="panel">
+      <h2>01. Reconocimiento inteligente</h2>
+
+      <p class="descripcion">
+        Activa la cámara o sube una fotografía de tu Hot Wheels.
+        El modelo analizará la imagen e intentará reconocer el carro.
+      </p>
+
+      <div class="botones">
+        <button id="btn-camara" type="button">
+          Activar cámara
+        </button>
+
+        <button id="btn-detener" class="boton-secundario"
+                type="button" disabled>
+          Detener cámara
+        </button>
+
+        <label for="subir-imagen" class="boton-descarga">
+          Subir fotografía
+        </label>
+
+        <input id="subir-imagen" type="file"
+               accept="image/*">
+      </div>
+
+      <p id="estado-modelo">Cargando modelo de inteligencia artificial...</p>
+    </section>
+
+    <!-- CÁMARA -->
+    <section class="panel">
+      <h2>02. Cámara en vivo</h2>
+
+      <p class="descripcion">
+        Coloca el carro frente a la cámara, procurando que tenga
+        buena iluminación y que se vea claramente.
+      </p>
+
+      <div class="zona-camara">
+        <div id="webcam-container">
+          <p id="mensaje-camara" class="descripcion">
+            La cámara aparecerá aquí cuando la actives.
+          </p>
+        </div>
+
+        <div id="imagen-container">
+          <img id="imagen-preview" alt="Fotografía del Hot Wheels">
+        </div>
+      </div>
+    </section>
+
+    <!-- PREDICCIONES -->
+    <section class="panel">
+      <h2>03. Resultado del reconocimiento</h2>
+
+      <p class="descripcion">
+        Estos porcentajes indican qué tan probable considera el modelo
+        cada una de las clases que aprendió durante el entrenamiento.
+      </p>
+
+      <div id="resultados" class="resultados">
+        <p class="descripcion">
+          Activa la cámara o sube una imagen para comenzar.
+        </p>
+      </div>
+    </section>
+
+    <!-- CARTA PERSONALIZADA -->
+    <section class="panel">
+      <h2>04. Tu carta coleccionable</h2>
+
+      <p class="descripcion">
+        Cuando el modelo reconozca un carro, aquí aparecerá la carta
+        que diseñaste para esa clase.
+      </p>
+
+      <div class="zona-carta">
+
+        <div class="carta-marco">
+          <img id="carta" alt="Carta coleccionable del Hot Wheels">
+
+          <p id="carta-no-disponible">
+            Tu carta aparecerá aquí después del reconocimiento.
+          </p>
+        </div>
+
+        <div>
+          <h2 id="nombre-carta">Esperando reconocimiento...</h2>
+
+          <p id="estado-carta">
+            Primero identifica un carro para mostrar su carta.
+          </p>
+
+          <a id="descargar-carta"
+             class="boton-descarga"
+             href="#"
+             download>
+            Descargar mi carta
+          </a>
+
+          <p class="nota">
+            La descarga corresponde a la imagen original de la carta
+            que hayas guardado en tu proyecto.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    HOT WHEELS SCANNER · Proyecto de clasificación de vehículos
+  </footer>
+
+  <script>
+    // ==========================================
+    // 1. CONFIGURACIÓN DEL MODELO
+    // ==========================================
+
+    const URL_MODELO =
+      "https://teachablemachine.withgoogle.com/models/5IgVCyz_o/";
+
+    let modelo = null;
+    let webcam = null;
+    let camaraActiva = false;
+    let procesando = false;
+    let generacion = 0;
+
+    const btnCamara = document.getElementById("btn-camara");
+    const btnDetener = document.getElementById("btn-detener");
+    const inputImagen = document.getElementById("subir-imagen");
+
+    const estadoModelo = document.getElementById("estado-modelo");
+    const webcamContainer = document.getElementById("webcam-container");
+    const mensajeCamara = document.getElementById("mensaje-camara");
+    const imagenPreview = document.getElementById("imagen-preview");
+    const resultados = document.getElementById("resultados");
+
+    const carta = document.getElementById("carta");
+    const cartaNoDisponible = document.getElementById("carta-no-disponible");
+    const estadoCarta = document.getElementById("estado-carta");
+    const nombreCarta = document.getElementById("nombre-carta");
+    const botonDescarga = document.getElementById("descargar-carta");
+
+
+    // ==========================================
+    // 2. RELACIONAR CLASES CON TUS CARTAS
+    // ==========================================
+
+    // IMPORTANTE:
+    // Cambia los nombres de ejemplo por los nombres EXACTOS
+    // de las clases de tu modelo de Teachable Machine.
+    //
+    // Guarda las imágenes de tus cartas dentro de la carpeta
+    // "cartas", que estará junto a este archivo index.html.
+
+    const CARTAS_POR_CLASE = {
+      "Rodger Dodger": {
+        imagen: "cartas/ficha_HotWheels-04.jpg",
+        descarga: "Rodger_Dodger.png"
+      },
+
+      "Deora II": {
+        imagen: "cartas/ficha_HotWheels-05.jpg",
+        descarga: "Deora_II.png"
+      },
+
+      "Twin Mill": {
+        imagen: "cartas/ficha_HotWheels-03.jpg",
+        descarga: "Twin_Mill.png"
+      },
+
+      "Bone Shaker": {
+        imagen: "cartas/ficha_HotWheels-02.jpg",
+        descarga: "Bone_Shaker.png"
+      },
+
+      "69 Dodge Charger": {
+        imagen: "cartas/ficha_HotWheels-01.jpg",
+        descarga: "Dodge_Charger69.png"
+      }
+    };
+
+
+    // ==========================================
+    // 3. CARGAR EL MODELO
+    // ==========================================
+
+    async function cargarModelo() {
+      try {
+        estadoModelo.textContent =
+          "Conectando con el modelo de Teachable Machine...";
+
+        modelo = await tmImage.load(
+          URL_MODELO + "model.json",
+          URL_MODELO + "metadata.json"
+        );
+
+        const etiquetas = await modelo.getClassLabels();
+
+        // Mostrar las etiquetas reales en la consola.
+        console.log("Clases de tu modelo:", etiquetas);
+
+        // Crear una tarjeta visual para cada clase.
+        resultados.innerHTML = "";
+
+        etiquetas.forEach((etiqueta, indice) => {
+          const tarjeta = document.createElement("div");
+          tarjeta.className = "resultado";
+
+          const nombre = document.createElement("p");
+          nombre.className = "resultado-nombre";
+          nombre.textContent = etiqueta;
+
+          const barraFondo = document.createElement("div");
+          barraFondo.className = "barra-fondo";
+
+          const barra = document.createElement("div");
+          barra.className = "barra";
+          barra.id = "barra-" + indice;
+
+          barraFondo.appendChild(barra);
+
+          const porcentaje = document.createElement("span");
+          porcentaje.className = "porcentaje";
+          porcentaje.id = "porcentaje-" + indice;
+          porcentaje.textContent = "0%";
+
+          tarjeta.appendChild(nombre);
+          tarjeta.appendChild(barraFondo);
+          tarjeta.appendChild(porcentaje);
+
+          resultados.appendChild(tarjeta);
+        });
+
+        estadoModelo.textContent =
+          "Modelo cargado correctamente. Ya puedes identificar tus carros.";
+
+        estadoModelo.className = "exito";
+
+      } catch (error) {
+        console.error("Error al cargar el modelo:", error);
+
+        estadoModelo.textContent =
+          "No se pudo cargar el modelo. Comprueba tu conexión y la URL.";
+
+        estadoModelo.className = "error";
+      }
+    }
+
+
+    // ==========================================
+    // 4. ACTIVAR LA CÁMARA
+    // ==========================================
+
+    async function activarCamara() {
+      if (!modelo) {
+        estadoModelo.textContent =
+          "Espera a que el modelo termine de cargar.";
+
+        estadoModelo.className = "error";
+        return;
+      }
+
+      await detenerCamara();
+
+      try {
+        imagenPreview.style.display = "none";
+        webcamContainer.style.display = "block";
+        webcamContainer.innerHTML = "";
+
+        mensajeCamara.style.display = "block";
+
+        webcam = new tmImage.Webcam(400, 300, true);
+
+        await webcam.setup();
+
+        webcamContainer.innerHTML = "";
+        webcamContainer.appendChild(webcam.canvas);
+
+        await webcam.play();
+
+        camaraActiva = true;
+        btnCamara.disabled = true;
+        btnDetener.disabled = false;
+
+        estadoModelo.textContent =
+          "Cámara activa. Enfoca un Hot Wheels para reconocerlo.";
+
+        estadoModelo.className = "exito";
+
+        const miGeneracion = generacion;
+
+        bucleCamara(miGeneracion);
+
+      } catch (error) {
+        console.error("Error al activar la cámara:", error);
+
+        estadoModelo.textContent =
+          "No se pudo activar la cámara. Revisa los permisos del navegador.";
+
+        estadoModelo.className = "error";
+
+        webcamContainer.innerHTML =
+          '<p class="descripcion">No se pudo acceder a la cámara.</p>';
+
+        camaraActiva = false;
+        btnCamara.disabled = false;
+        btnDetener.disabled = true;
+      }
+    }
+
+
+    // ==========================================
+    // 5. ANALIZAR LA CÁMARA EN VIVO
+    // ==========================================
+
+    async function bucleCamara(miGeneracion) {
+      if (!camaraActiva || miGeneracion !== generacion || !webcam) {
+        return;
+      }
+
+      webcam.update();
+
+      if (!procesando) {
+        procesando = true;
+
+        try {
+          const predicciones = await modelo.predict(webcam.canvas);
+          mostrarPredicciones(predicciones);
+        } catch (error) {
+          console.error("Error analizando la cámara:", error);
+        } finally {
+          procesando = false;
+        }
+      }
+
+      if (camaraActiva && miGeneracion === generacion) {
+        requestAnimationFrame(() => bucleCamara(miGeneracion));
+      }
+    }
+
+
+    // ==========================================
+    // 6. DETENER LA CÁMARA
+    // ==========================================
+
+    async function detenerCamara() {
+      generacion++;
+      camaraActiva = false;
+
+      btnCamara.disabled = false;
+      btnDetener.disabled = true;
+
+      if (webcam) {
+        try {
+          webcam.stop();
+        } catch (error) {
+          console.warn("No se pudo detener la cámara:", error);
+        }
+
+        webcam = null;
+      }
+
+      webcamContainer.innerHTML =
+        '<p class="descripcion">La cámara está detenida.</p>';
+    }
+
+
+    // ==========================================
+    // 7. SUBIR UNA FOTOGRAFÍA
+    // ==========================================
+
+    inputImagen.addEventListener("change", async function (evento) {
+      const archivo = evento.target.files[0];
+
+      if (!archivo) return;
+
+      if (!archivo.type.startsWith("image/")) {
+        estadoModelo.textContent =
+          "Selecciona un archivo de imagen válido.";
+
+        estadoModelo.className = "error";
+        inputImagen.value = "";
+        return;
+      }
+
+      if (!modelo) {
+        estadoModelo.textContent =
+          "Espera a que el modelo termine de cargar.";
+
+        estadoModelo.className = "error";
+        inputImagen.value = "";
+        return;
+      }
+
+      await detenerCamara();
+
+      const lector = new FileReader();
+
+      lector.onload = async function (e) {
+        imagenPreview.onload = async function () {
+          webcamContainer.style.display = "none";
+          imagenPreview.style.display = "block";
+
+          estadoModelo.textContent = "Analizando la fotografía...";
+          estadoModelo.className = "";
+
+          try {
+            const predicciones = await modelo.predict(imagenPreview);
+            mostrarPredicciones(predicciones);
+
+            estadoModelo.textContent =
+              "Fotografía analizada correctamente.";
+
+            estadoModelo.className = "exito";
+
+          } catch (error) {
+            console.error("Error al analizar la imagen:", error);
+
+            estadoModelo.textContent =
+              "No se pudo analizar la imagen.";
+
+            estadoModelo.className = "error";
+          }
+        };
+
+        imagenPreview.onerror = function () {
+          estadoModelo.textContent =
+            "No se pudo abrir la fotografía seleccionada.";
+
+          estadoModelo.className = "error";
+        };
+
+        imagenPreview.src = e.target.result;
+      };
+
+      lector.readAsDataURL(archivo);
+
+      // Permite volver a seleccionar el mismo archivo.
+      inputImagen.value = "";
+    });
+
+
+    // ==========================================
+    // 8. MOSTRAR LAS PREDICCIONES Y LA CARTA
+    // ==========================================
+
+    function mostrarPredicciones(predicciones) {
+      if (!predicciones || predicciones.length === 0) return;
+
+      let ganador = 0;
+
+      predicciones.forEach((prediccion, indice) => {
+        if (
+          prediccion.probability >
+          predicciones[ganador].probability
+        ) {
+          ganador = indice;
+        }
+
+        const barra = document.getElementById("barra-" + indice);
+        const porcentaje = document.getElementById(
+          "porcentaje-" + indice
+        );
+
+        if (barra && porcentaje) {
+          const valor = prediccion.probability * 100;
+
+          barra.style.width = valor + "%";
+          porcentaje.textContent = valor.toFixed(1) + "%";
+        }
+      });
+
+      const resultado = predicciones[ganador];
+
+      // Seleccionar la carta asociada a la clase ganadora.
+      mostrarCarta(resultado.className);
+    }
+
+
+    // ==========================================
+    // 9. MOSTRAR Y PREPARAR LA DESCARGA DE LA CARTA
+    // ==========================================
+
+    function mostrarCarta(nombreClase) {
+      const datosCarta = CARTAS_POR_CLASE[nombreClase];
+
+      nombreCartaElemento(nombreClase);
+
+      if (!datosCarta) {
+        carta.style.display = "none";
+        carta.removeAttribute("src");
+
+        cartaNoDisponible.style.display = "block";
+        cartaNoDisponible.textContent =
+          "No hay una carta configurada para la clase: " +
+          nombreClase;
+
+        estadoCarta.textContent =
+          "Añade esta etiqueta a CARTAS_POR_CLASE y asigna su imagen.";
+
+        estadoCarta.className = "error";
+        botonDescarga.style.display = "none";
+
+        console.warn(
+          "Falta configurar una carta para la clase:",
+          nombreClase
+        );
+
+        return;
+      }
+
+      // Actualizar el nombre del archivo que se descargará.
+      botonDescarga.href = datosCarta.imagen;
+      botonDescarga.download = datosCarta.descarga;
+
+      // Configurar los eventos antes de asignar la imagen.
+      carta.onload = function () {
+        carta.style.display = "block";
+        cartaNoDisponible.style.display = "none";
+
+        estadoCarta.textContent =
+          "¡Carta lista! Puedes descargarla y guardarla.";
+
+        estadoCarta.className = "exito";
+        botonDescarga.style.display = "inline-flex";
+      };
+
+      carta.onerror = function () {
+        carta.style.display = "none";
+        cartaNoDisponible.style.display = "block";
+
+        cartaNoDisponible.textContent =
+          "No se encontró la imagen: " + datosCarta.imagen;
+
+        estadoCarta.textContent =
+          "Revisa que el archivo exista y que su nombre coincida.";
+
+        estadoCarta.className = "error";
+        botonDescarga.style.display = "none";
+
+        console.error(
+          "No se pudo cargar la carta:",
+          datosCarta.imagen
+        );
+      };
+
+      estadoCarta.textContent = "Cargando carta...";
+      estadoCarta.className = "";
+
+      // No recargar la imagen si ya es la carta correcta.
+      if (carta.getAttribute("src") === datosCarta.imagen) {
+        if (carta.complete && carta.naturalWidth > 0) {
+          carta.style.display = "block";
+          cartaNoDisponible.style.display = "none";
+
+          estadoCarta.textContent =
+            "¡Carta lista! Puedes descargarla y guardarla.";
+
+          estadoCarta.className = "exito";
+          botonDescarga.style.display = "inline-flex";
+        }
+
+        return;
+      }
+
+      carta.src = datosCarta.imagen;
+    }
+
+
+    function nombreCartaElemento(nombre) {
+      nombreCarta.textContent = nombre;
+    }
+
+
+    // ==========================================
+    // 10. CONECTAR LOS BOTONES
+    // ==========================================
+
+    btnCamara.addEventListener("click", activarCamara);
+
+    btnDetener.addEventListener("click", detenerCamara);
+
+
+    // ==========================================
+    // 11. INICIAR LA APLICACIÓN
+    // ==========================================
+
+    cargarModelo();
+  </script>
+
+</body>
+</html>
